@@ -21,7 +21,6 @@ import (
 	"net"
 	"time"
 
-	farm "github.com/dgryski/go-farm"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/osrg/gobgp/packet/bgp"
@@ -71,20 +70,10 @@ func ProcessMessage(m *bgp.BGPMessage, peerInfo *PeerInfo, timestamp time.Time) 
 		listLen += len(reach.Value)
 	}
 
-	var hash uint32
-	if len(adds) > 0 || reach != nil {
-		total := bytes.NewBuffer(make([]byte, 0))
-		for _, a := range attrs {
-			b, _ := a.Serialize()
-			total.Write(b)
-		}
-		hash = farm.Hash32(total.Bytes())
-	}
-
 	pathList := make([]*Path, 0, listLen)
 	for _, nlri := range adds {
 		p := NewPath(peerInfo, nlri, false, attrs, timestamp, false)
-		p.SetHash(hash)
+		p.AssignHash()
 		pathList = append(pathList, p)
 	}
 	if reach != nil {
@@ -95,7 +84,7 @@ func ProcessMessage(m *bgp.BGPMessage, peerInfo *PeerInfo, timestamp time.Time) 
 
 		for _, nlri := range reach.Value {
 			p := NewPath(peerInfo, nlri, false, reachAttrs, timestamp, false)
-			p.SetHash(hash)
+			p.AssignHash()
 			pathList = append(pathList, p)
 		}
 	}

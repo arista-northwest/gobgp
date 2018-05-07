@@ -19,8 +19,9 @@ import (
 	"bytes"
 	"reflect"
 
-	"github.com/osrg/gobgp/packet/bgp"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/osrg/gobgp/packet/bgp"
 )
 
 func UpdatePathAttrs2ByteAs(msg *bgp.BGPUpdate) error {
@@ -287,8 +288,8 @@ type packer struct {
 
 type packerMP struct {
 	packer
-	paths       []*Path
 	withdrawals []*Path
+	hashMap     map[uint32][]*Path
 }
 
 func (p *packerMP) add(path *Path) {
@@ -304,19 +305,32 @@ func (p *packerMP) add(path *Path) {
 		return
 	}
 
-	p.paths = append(p.paths, path)
+	key := path.GetHash()
+	paths, ok := p.hashMap[key]
+	if ok {
+		p.hashMap[key] = append(paths, path)
+	} else {
+		p.hashMap[key] = []*Path{path}
+	}
 }
 
-func createMPReachMessage(path *Path) *bgp.BGPMessage {
-	oattrs := path.GetPathAttrs()
-	attrs := make([]bgp.PathAttributeInterface, 0, len(oattrs))
-	for _, a := range oattrs {
-		if a.GetType() == bgp.BGP_ATTR_TYPE_MP_REACH_NLRI {
-			attrs = append(attrs, bgp.NewPathAttributeMpReachNLRI(path.GetNexthop().String(), []bgp.AddrPrefixInterface{path.GetNlri()}))
-		} else {
+func createMPReachMessage(paths []*Path) *bgp.BGPMessage {
+	path := paths[0]
+	orgAttrs := path.GetPathAttrs()
+	attrs := make([]bgp.PathAttributeInterface, 0, len(orgAttrs))
+	for _, attr := range orgAttrs {
+		switch a := attr.(type) {
+		case *bgp.PathAttributeMpReachNLRI:
+			// Reconstruct later, ignore.
+		default:
 			attrs = append(attrs, a)
 		}
 	}
+	nlris := make([]bgp.AddrPrefixInterface, 0, len(paths))
+	for _, path := range paths {
+		nlris = append(nlris, path.GetNlri())
+	}
+	attrs = append(attrs, bgp.NewPathAttributeMpReachNLRI(path.GetNexthop().String(), nlris))
 	return bgp.NewBGPUpdateMessage(nil, attrs, nil)
 }
 
@@ -328,8 +342,8 @@ func (p *packerMP) pack(options ...*bgp.MarshallingOption) []*bgp.BGPMessage {
 		msgs = append(msgs, bgp.NewBGPUpdateMessage(nil, []bgp.PathAttributeInterface{bgp.NewPathAttributeMpUnreachNLRI(nlris)}, nil))
 	}
 
-	for _, path := range p.paths {
-		msgs = append(msgs, createMPReachMessage(path))
+	for _, paths := range p.hashMap {
+		msgs = append(msgs, createMPReachMessage(paths))
 	}
 
 	if p.eof {
@@ -344,7 +358,7 @@ func newPackerMP(f bgp.RouteFamily) *packerMP {
 			family: f,
 		},
 		withdrawals: make([]*Path, 0),
-		paths:       make([]*Path, 0),
+		hashMap:     make(map[uint32][]*Path),
 	}
 }
 
@@ -456,7 +470,7 @@ func (p *packerV4) pack(options ...*bgp.MarshallingOption) []*bgp.BGPMessage {
 	}
 
 	for _, path := range p.mpPaths {
-		msgs = append(msgs, createMPReachMessage(path))
+		msgs = append(msgs, createMPReachMessage([]*Path{path}))
 	}
 
 	if p.eof {

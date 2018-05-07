@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	farm "github.com/dgryski/go-farm"
 	log "github.com/sirupsen/logrus"
 
 	uuid "github.com/satori/go.uuid"
@@ -1252,10 +1253,30 @@ func (p *Path) ToLocal() *Path {
 	return path
 }
 
+func (p *Path) AssignHash() {
+	attrsBytes := bytes.NewBuffer(make([]byte, 0))
+	for _, attr := range p.GetPathAttrs() {
+		switch a := attr.(type) {
+		case *bgp.PathAttributeMpReachNLRI:
+			attrsBytes.Write(a.Nexthop)
+			attrsBytes.Write(a.LinkLocalNexthop)
+		case *bgp.PathAttributeMpUnreachNLRI:
+			// Ignore
+		default:
+			b, _ := a.Serialize()
+			attrsBytes.Write(b)
+		}
+	}
+	p.attrsHash = farm.Hash32(attrsBytes.Bytes())
+}
+
 func (p *Path) SetHash(v uint32) {
 	p.attrsHash = v
 }
 
 func (p *Path) GetHash() uint32 {
+	if p.attrsHash == 0 {
+		p.AssignHash()
+	}
 	return p.attrsHash
 }
