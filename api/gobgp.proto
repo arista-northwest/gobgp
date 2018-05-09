@@ -21,6 +21,8 @@
 
 syntax = "proto3";
 
+import "google/protobuf/any.proto";
+
 package gobgpapi;
 
 // Interface exported by the server.
@@ -550,8 +552,24 @@ message RPKIValidation{
 }
 
 message Path {
-  bytes nlri = 1;
-  repeated bytes pattrs = 2;
+  // One of the following defined in "api/bgp/attribute.proto":
+  // - IPAddressPrefix
+  // - LabeledIPAddressPrefix
+  // - EncapsulationNLRI
+  // - EVPNEthernetAutoDiscoveryRoute
+  // - EVPNMACIPAdvertisementRoute
+  // - EVPNInclusiveMulticastEthernetTagRoute
+  // - EVPNEthernetSegmentRoute
+  // - EVPNIPPrefixRoute
+  // - LabeledVPNIPAddressPrefix
+  // - RouteTargetMembershipNLRI
+  // - FlowSpecNLRI
+  // - VPNFlowSpecNLRI
+  // - OpaqueNLRI
+  google.protobuf.Any nlri = 1;
+  // Each attribute must be on of *Attribute defined in
+  // "api/bgp/attribute.proto".
+  repeated google.protobuf.Any pattrs = 2;
   int64 age = 3;
   bool best = 4;
   bool is_withdraw = 5;

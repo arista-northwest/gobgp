@@ -20,6 +20,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/any"
+
+	bgpapi "github.com/osrg/gobgp/api/bgp"
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
 	"github.com/osrg/gobgp/table"
@@ -61,10 +64,12 @@ func (d *Destination) ToNativeDestination(option ...ToNativeOption) (*table.Dest
 	if len(d.Paths) == 0 {
 		return nil, fmt.Errorf("no path in destination")
 	}
-	nlri, err := getNLRI(bgp.RouteFamily(d.Paths[0].Family), d.Paths[0].Nlri)
+	path := d.Paths[0]
+	nlris, err := bgpapi.UnmarshalNLRIs(bgp.RouteFamily(path.Family), []*any.Any{path.Nlri})
 	if err != nil {
 		return nil, err
 	}
+	nlri := nlris[0]
 	option = append(option, ToNativeOption{
 		NLRI: nlri,
 	})
@@ -86,7 +91,11 @@ func (d *Destination) ToNativeDestination(option ...ToNativeOption) (*table.Dest
 }
 
 func (p *Path) GetNativeNlri() (bgp.AddrPrefixInterface, error) {
-	return getNLRI(bgp.RouteFamily(p.Family), p.Nlri)
+	nlris, err := bgpapi.UnmarshalNLRIs(bgp.RouteFamily(p.Family), []*any.Any{p.Nlri})
+	if err != nil {
+		return nil, err
+	}
+	return nlris[0], nil
 }
 
 func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
@@ -105,22 +114,14 @@ func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
 	}
 	if nlri == nil {
 		var err error
-		nlri, err = getNLRI(bgp.RouteFamily(p.Family), p.Nlri)
+		nlri, err = p.GetNativeNlri()
 		if err != nil {
 			return nil, err
 		}
 	}
-	pattr := make([]bgp.PathAttributeInterface, 0, len(p.Pattrs))
-	for _, attr := range p.Pattrs {
-		p, err := bgp.GetPathAttribute(attr)
-		if err != nil {
-			return nil, err
-		}
-		err = p.DecodeFromBytes(attr)
-		if err != nil {
-			return nil, err
-		}
-		pattr = append(pattr, p)
+	pattr, err := bgpapi.UnmarshalPathAttributes(p.Pattrs)
+	if err != nil {
+		return nil, err
 	}
 	t := time.Unix(p.Age, 0)
 	nlri.SetPathIdentifier(p.Identifier)

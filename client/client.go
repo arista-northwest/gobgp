@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/osrg/gobgp/api/bgp"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -417,12 +419,8 @@ func (cli *Client) deletePath(uuid []byte, f bgp.RouteFamily, vrfID string, path
 	case len(pathList) != 0:
 		for _, path := range pathList {
 			nlri := path.GetNlri()
-			n, err := nlri.Serialize()
-			if err != nil {
-				return err
-			}
 			p := &api.Path{
-				Nlri:            n,
+				Nlri:            bgpapi.MarshalNLRI(nlri),
 				Family:          uint32(path.GetRouteFamily()),
 				Identifier:      nlri.PathIdentifier(),
 				LocalIdentifier: nlri.PathLocalIdentifier(),
