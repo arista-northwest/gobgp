@@ -92,6 +92,21 @@ class GoBGPTestBase(unittest.TestCase):
             for p in d['paths']:
                 self.assertFalse(p.get('stale', False))
 
+        # Test if the dropped paths are not restored again.
+        # https://github.com/osrg/gobgp/pull/1707
+        g1.stop_gobgp()
+        g2.wait_for(expected_state=BGP_FSM_ACTIVE, peer=g1)
+        self.assertEqual(len(g2.get_global_rib('10.10.20.0/24')), 1)
+        self.assertEqual(len(g2.get_global_rib('10.10.10.0/24')), 0)
+        for d in g2.get_global_rib():
+            for p in d['paths']:
+                self.assertTrue(p['stale'])
+
+        g1.routes = {}
+        g1.start_gobgp(graceful_restart=True)
+        g1.add_route('10.10.20.0/24')
+        g1.wait_for(expected_state=BGP_FSM_ESTABLISHED, peer=g2)
+
     def test_04_add_non_graceful_restart_enabled_peer(self):
         g1 = self.bgpds['g1']
         # g2 = self.bgpds['g2']
